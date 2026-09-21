@@ -5,7 +5,7 @@ export const maxDuration = 30;
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Valid, active Gemini endpoints
+// Active Gemini model queue
 const MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash"];
 
 async function callGemini(prompt: string, modelIndex = 0, attempt = 1): Promise<Response> {
@@ -26,7 +26,6 @@ async function callGemini(prompt: string, modelIndex = 0, attempt = 1): Promise<
     }
   );
 
-  // Auto-switch models if rate limited or busy
   if (response.status === 503 || response.status === 429 || response.status === 500) {
     if (attempt < 2) {
       await new Promise((r) => setTimeout(r, 1000));
@@ -40,37 +39,40 @@ async function callGemini(prompt: string, modelIndex = 0, attempt = 1): Promise<
   return response;
 }
 
-// Local Safety Net: Returns instant 4 Malay main posts if Google AI is offline
+// High-Value, Authentic Malay Fallback Engine (No overclaiming, smart tone)
 function generateFallbackContent(itemDetails: string, platform: string, audience: string) {
   return {
     hooks: [
-      "Jujur cakap, barang ni memang berbaloi kalau korang tengah cari penyelesaian senang.",
-      "Siapa yang selalu ada masalah macam ni, wajib tengok item ni.",
-      "Ramai yang tanya mana nak dapat barang berkualiti harga berpatutan...",
-      "Guna ni beberapa hari, memang rasa beza sangat!",
-      "Jangan beli dulu sebelum korang baca ni."
+      "Kadang-kadang jimat masa tu jauh lagi berharga daripada jimat beberapa ringgit...",
+      "Kalau korang tengah fikir nak kemas rumah tanpa buang tenaga lepas balik kerja, baca ni kejap.",
+      "Solusi praktikal untuk sesiapa yang nak rumah sentiasa bersih tanpa pening kepala.",
+      "Bukan pasal beli barang mahal, tapi pasal beli barang yang betul-betul mudahkan hidup.",
+      "Ramai tak perasan berapa banyak masa hilang setiap minggu cuma sebab urusan kemas rumah."
     ],
     main_post: [
-      `Kalau korang tengah cari pilihan yang praktikal untuk ${itemDetails}, barang ni memang antara yang terbaik. Kualiti padu, senang guna, dan sesuai sangat untuk ${audience}.\n\nTak payah pening kepala pusing cari tempat lain. Tengok link untuk maklumat lanjut dan tawaran terkini!`,
-      `Jujur reviu pasal ${itemDetails} ni: Sangat memudahkan urusan harian! Sesuai sangat untuk ${audience} yang nak jimat masa. Rekomen sangat untuk cuba sendiri.`,
-      `Siapa kat sini yang tengah cari ${itemDetails}? Barang ni memang viral sebab fungsi dia memang mantap dan berbaloi dengan harga. Korang wajib check out sekarang!`,
-      `Pengalaman guna ${itemDetails} ni memang terbaik. Binaan kukuh, prestasi tiada tandingan, khas untuk ${audience}. Tekan link bawah ni untuk dapatkan promosi khas.`
+      `Realitinya, lepas balik kerja yang penat, benda terakhir kita nak buat mesti menyapu dengan mengemut lantai. ${itemDetails} ni direka khas untuk selesaikan masalah tu secara automatik.\n\nBukan sekadar gadget biasa, tapi pelaburan kecil untuk jimatkan masa & tenaga korang setiap hari. Sesuai sangat untuk ${audience} yang hargai kebersihan tanpa pening kepala.\n\nKorang boleh check info lanjut dan harga terkini kat link bawah ni 👇`,
+
+      `Bila kira balik, nilai masa yang kita jimat setiap minggu guna ${itemDetails} ni memang sangat berbaloi. Relevan sangat untuk ${audience} yang jadual harian sentiasa padat.\n\nFunction utama dia memang fokus pada kemudahan—tak payah cuci tangan, sedutan efisien, dan urusan rumah terus settle dalam diam.\n\nTengok tawaran terkini dan voucher khas kat sini 👇`,
+
+      `Ulasan jujur dari sudut praktikal untuk ${itemDetails}:\n\n1. Penjimatan Masa: Automatikkan kerja rumah harian korang.\n2. Prestasi: Kebersihan konsisten tanpa perlu kawalan manual berterusan.\n3. Nilai Pelaburan: Berbaloi untuk jangka masa panjang khasnya buat ${audience}.\n\nBoleh tengok spesifikasi penuh dan harga promo kat link bio/bawah ni!`,
+
+      `Kalau korang tengah cari jalan smart untuk kekalkan kebersihan rumah tanpa kompromi masa lapang, ${itemDetails} ni antara pilihan paling praktikal dalam pasaran sekarang.\n\nKualiti solid, fungsi tepat pada sasaran, dan sesuai untuk gaya hidup ${audience}.\n\nKlik link bawah ni untuk tengok tawaran rasmi sekarang.`
     ],
     ctas: [
-      "Tekan link dekat bio / bawah ni untuk check stock!",
-      "Klik link sekarang sebelum harga promosi habis.",
-      "Tengok promo terkini dekat sini:"
+      "Semak maklumat lanjut dan voucher promosi di sini 👇",
+      "Tekan link untuk tengok harga terkini dan promosi rasmi.",
+      "Klik link di bawah untuk semak ketersediaan stok rasmi."
     ],
     comment_ideas: [
-      "Penghantaran cepat tak?",
-      "Tahan lama tak kalau guna harian?",
-      "Ada waranti tak barang ni?",
-      "Sesuai tak untuk guna harian?",
-      "Warna apa lagi yang ada stock?"
+      "Berapa lama jaminan (warranty) rasmi untuk model ni?",
+      "Sesuai tak kalau guna kat ruang yang ada karpet tebal?",
+      "Berapa hari biasa mengambil masa untuk penghantaran?",
+      "Kapasiti bateri dia tahan berapa lama untuk sekali cas?",
+      "Ada beza ketara tak dengan model generasi sebelum ni?"
     ],
     follow_up_posts: [
-      "Semalam ramai tanyakan pasal item ni, stok memang makin susut!",
-      "Update ringkas: Masih ramai bagi review positif lepas guna."
+      "Update ringkas: Maklum balas dari pembeli sebelum ni memang banyak tekankan bab jimat masa.",
+      "Untuk yang bertanyakan pasal promosi, korang masih boleh semak voucher terkini di link rasmi."
     ]
   };
 }
@@ -88,10 +90,18 @@ export async function POST(req: NextRequest) {
     platformStr = platform || "Threads";
     audienceStr = audience || "General";
 
-    const prompt = `You are a top-performing affiliate marketer and social media copywriter in Malaysia. Write in a natural, human, scroll-native voice.
+    const prompt = `You are a top-tier Malaysian content strategist and smart consumer product reviewer on Threads, TikTok, and LinkedIn.
+Your specialty is writing HIGH-VALUE, SOPHISTICATED, and HIGHLY PERSUASIVE content in natural Bahasa Melayu (Santai tetapi Berilmu / Smart Consumer Style).
 
-STRICT LANGUAGE REQUIREMENT:
-Regardless of what language the input product details are in, you MUST write ALL outputs strictly in fluent, natural Bahasa Melayu (Malay) as spoken on Malaysian social media (Bahasa Melayu Santai / Casual). Do NOT output English under any circumstances.
+CRITICAL TONE & QUALITY GUIDELINES:
+1. NO CHEAP HYPE OR OVERCLAIMING: Strictly AVOID clickbait, loud drama, caps-lock spam, or exaggerated claims (e.g. "terbaik di dunia", "gila power", "gerenti 100%", "paling ajaib").
+2. HIGH-VALUE INSIGHT: Focus on realistic benefits—time saved, convenience, smart lifestyle upgrade, practical ROI, and solving genuine daily frustrations.
+3. LANGUAGE: Natural, fluent, intelligent Bahasa Melayu as spoken by modern Malaysian professionals and smart consumers. Smooth, natural phrasing that makes readers think "Wow, this makes total sense."
+4. STRUCTURE: Produce EXACTLY 4 distinct Main Post variations:
+   - Option 1: The Smart Investment Angle (Focus on time/energy saved)
+   - Option 2: The Practical Problem-Solver (Relatable daily friction -> seamless fix)
+   - Option 3: Structured Value Breakdown (Bullet points with clear logic)
+   - Option 4: Concise Authentic Recommendation (Sophisticated, honest recommendation)
 
 PRODUCT DETAILS: ${itemDetails}
 ${url ? `LINK: ${url}` : ""}
@@ -100,18 +110,28 @@ PLATFORM: ${platformStr}
 GOAL: ${goal || "Get clicks"}
 CONTENT STYLE: ${style || "Casual"}
 
-Return ONLY valid JSON with this exact schema containing EXACTLY 4 main post variations:
+Return ONLY a valid JSON object matching this schema:
 {
-  "hooks": ["...", "...", "...", "...", "..."],
-  "main_post": [
-    "Main Post Option 1 (Malay)",
-    "Main Post Option 2 (Malay)",
-    "Main Post Option 3 (Malay)",
-    "Main Post Option 4 (Malay)"
+  "hooks": [
+    "High-value hook 1 (Smart consumer mindset)",
+    "High-value hook 2 (Relatable daily frustration)",
+    "High-value hook 3 (Time & energy ROI angle)",
+    "High-value hook 4 (Intelligent question/observation)",
+    "High-value hook 5 (Practical lifestyle perspective)"
   ],
-  "ctas": ["...", "...", "..."],
-  "comment_ideas": ["...", "...", "...", "...", "..."],
-  "follow_up_posts": ["...", "..."]
+  "main_post": [
+    "Main Post 1 (The Smart Investment Angle)",
+    "Main Post 2 (The Practical Problem-Solver)",
+    "Main Post 3 (Structured Value Breakdown)",
+    "Main Post 4 (Concise Authentic Recommendation)"
+  ],
+  "ctas": [
+    "Sophisticated CTA 1",
+    "Sophisticated CTA 2",
+    "Sophisticated CTA 3"
+  ],
+  "comment_ideas": ["Insightful Question 1", "Insightful Question 2", "Insightful Question 3", "Insightful Question 4", "Insightful Question 5"],
+  "follow_up_posts": ["Follow up post 1", "Follow up post 2"]
 }`;
 
     if (GEMINI_API_KEY) {
@@ -134,7 +154,7 @@ Return ONLY valid JSON with this exact schema containing EXACTLY 4 main post var
     console.error("Backend error intercepted:", err);
   }
 
-  // Always returns HTTP 200 with complete content in Malay
+  // Guaranteed HTTP 200 with high-value Malay copy
   const fallbackData = generateFallbackContent(itemDetails, platformStr, audienceStr);
   return NextResponse.json(fallbackData, { status: 200 });
 }
