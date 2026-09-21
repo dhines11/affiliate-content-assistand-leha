@@ -40,7 +40,7 @@ async function callGemini(prompt: string, modelIndex = 0, attempt = 1): Promise<
   return response;
 }
 
-// Local Safety Net: Returns instant Malay copy if Google AI is offline
+// Local Safety Net: Returns instant 4 Malay main posts if Google AI is offline
 function generateFallbackContent(itemDetails: string, platform: string, audience: string) {
   return {
     hooks: [
@@ -50,7 +50,12 @@ function generateFallbackContent(itemDetails: string, platform: string, audience
       "Guna ni beberapa hari, memang rasa beza sangat!",
       "Jangan beli dulu sebelum korang baca ni."
     ],
-    main_post: `Kalau korang tengah cari pilihan yang praktikal untuk ${itemDetails}, barang ni memang antara yang terbaik. Kualiti padu, senang guna, dan sesuai sangat untuk ${audience}.\n\nTak payah pening kepala pusing cari tempat lain. Tengok link untuk tengok maklumat lanjut dan tawaran terkini!`,
+    main_post: [
+      `Kalau korang tengah cari pilihan yang praktikal untuk ${itemDetails}, barang ni memang antara yang terbaik. Kualiti padu, senang guna, dan sesuai sangat untuk ${audience}.\n\nTak payah pening kepala pusing cari tempat lain. Tengok link untuk maklumat lanjut dan tawaran terkini!`,
+      `Jujur reviu pasal ${itemDetails} ni: Sangat memudahkan urusan harian! Sesuai sangat untuk ${audience} yang nak jimat masa. Rekomen sangat untuk cuba sendiri.`,
+      `Siapa kat sini yang tengah cari ${itemDetails}? Barang ni memang viral sebab fungsi dia memang mantap dan berbaloi dengan harga. Korang wajib check out sekarang!`,
+      `Pengalaman guna ${itemDetails} ni memang terbaik. Binaan kukuh, prestasi tiada tandingan, khas untuk ${audience}. Tekan link bawah ni untuk dapatkan promosi khas.`
+    ],
     ctas: [
       "Tekan link dekat bio / bawah ni untuk check stock!",
       "Klik link sekarang sebelum harga promosi habis.",
@@ -85,7 +90,8 @@ export async function POST(req: NextRequest) {
 
     const prompt = `You are a top-performing affiliate marketer and social media copywriter in Malaysia. Write in a natural, human, scroll-native voice.
 
-LANGUAGE REQUIREMENT: Write ALL generated content strictly in fluent, natural Bahasa Melayu (Malay) as used on Malaysian social media (Casual/Santai Malay).
+STRICT LANGUAGE REQUIREMENT:
+Regardless of what language the input product details are in, you MUST write ALL outputs strictly in fluent, natural Bahasa Melayu (Malay) as spoken on Malaysian social media (Bahasa Melayu Santai / Casual). Do NOT output English under any circumstances.
 
 PRODUCT DETAILS: ${itemDetails}
 ${url ? `LINK: ${url}` : ""}
@@ -94,10 +100,15 @@ PLATFORM: ${platformStr}
 GOAL: ${goal || "Get clicks"}
 CONTENT STYLE: ${style || "Casual"}
 
-Return ONLY valid JSON with this exact schema:
+Return ONLY valid JSON with this exact schema containing EXACTLY 4 main post variations:
 {
   "hooks": ["...", "...", "...", "...", "..."],
-  "main_post": "...",
+  "main_post": [
+    "Main Post Option 1 (Malay)",
+    "Main Post Option 2 (Malay)",
+    "Main Post Option 3 (Malay)",
+    "Main Post Option 4 (Malay)"
+  ],
   "ctas": ["...", "...", "..."],
   "comment_ideas": ["...", "...", "...", "...", "..."],
   "follow_up_posts": ["...", "..."]
@@ -123,7 +134,7 @@ Return ONLY valid JSON with this exact schema:
     console.error("Backend error intercepted:", err);
   }
 
-  // Always returns HTTP 200 with complete content
+  // Always returns HTTP 200 with complete content in Malay
   const fallbackData = generateFallbackContent(itemDetails, platformStr, audienceStr);
   return NextResponse.json(fallbackData, { status: 200 });
 }
