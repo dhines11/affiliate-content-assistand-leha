@@ -40,63 +40,32 @@ async function callGemini(prompt: string, modelIndex = 0, attempt = 1): Promise<
   return response;
 }
 
-// Local Safety Net: Returns instant structured copy if Google AI is offline
+// Local Safety Net: Returns instant Malay copy if Google AI is offline
 function generateFallbackContent(itemDetails: string, platform: string, audience: string) {
-  const isMalay = /malay|melayu/i.test(itemDetails);
-
-  if (isMalay) {
-    return {
-      hooks: [
-        "Jujur cakap, barang ni memang berbaloi kalau korang tengah cari penyelesaian senang.",
-        "Siapa yang selalu ada masalah macam ni, wajib tengok item ni.",
-        "Ramai yang tanya mana nak dapat barang berkualiti harga berpatutan...",
-        "Guna ni beberapa hari, memang rasa beza sangat!",
-        "Jangan beli dulu sebelum korang baca ni."
-      ],
-      main_post: `Kalau korang tengah cari pilihan yang praktikal untuk ${itemDetails}, barang ni memang antara yang terbaik. Cengkam cemerlang, kualiti padu, dan sesuai sangat untuk golongan ${audience}.\n\nTak payah pening kepala pusing cari tempat lain. Tengok link untuk tengok maklumat lanjut dan tawaran terkini!`,
-      ctas: [
-        "Tekan link dekat bio / bawah ni untuk check stock!",
-        "Klik link sekarang sebelum harga promosi habis.",
-        "Tengok promo terkini dekat sini:"
-      ],
-      comment_ideas: [
-        "Penghantaran cepat tak?",
-        "Tahan lama tak kalau guna harian?",
-        "Ada waranti tak barang ni?",
-        "Sesuai tak untuk guna harian?",
-        "Warna apa lagi yang ada stock?"
-      ],
-      follow_up_posts: [
-        "Semalam ramai tanyakan pasal item ni, stok memang makin susut!",
-        "Update ringkas: Masih ramai bagi review positif lepas guna."
-      ]
-    };
-  }
-
   return {
     hooks: [
-      "Honestly, this is one of the best upgrades you can get right now.",
-      "If you've been looking for something reliable, don't sleep on this.",
-      "Here is why everyone has been talking about this item recently...",
-      "Quick review after using this: totally worth it.",
-      "Stop scrolling if you need a quick solution for your setup."
+      "Jujur cakap, barang ni memang berbaloi kalau korang tengah cari penyelesaian senang.",
+      "Siapa yang selalu ada masalah macam ni, wajib tengok item ni.",
+      "Ramai yang tanya mana nak dapat barang berkualiti harga berpatutan...",
+      "Guna ni beberapa hari, memang rasa beza sangat!",
+      "Jangan beli dulu sebelum korang baca ni."
     ],
-    main_post: `If you're looking for a reliable option for ${itemDetails}, this is definitely a solid pick. Great quality, easy to use, and tailored well for ${audience}.\n\nCheck out the link below for full details and current promos!`,
+    main_post: `Kalau korang tengah cari pilihan yang praktikal untuk ${itemDetails}, barang ni memang antara yang terbaik. Kualiti padu, senang guna, dan sesuai sangat untuk ${audience}.\n\nTak payah pening kepala pusing cari tempat lain. Tengok link untuk tengok maklumat lanjut dan tawaran terkini!`,
     ctas: [
-      "Tap the link to check current availability!",
-      "Grab yours via the link before stock runs out.",
-      "Click here to check the latest deals:"
+      "Tekan link dekat bio / bawah ni untuk check stock!",
+      "Klik link sekarang sebelum harga promosi habis.",
+      "Tengok promo terkini dekat sini:"
     ],
     comment_ideas: [
-      "How fast is the delivery?",
-      "Does it hold up well over time?",
-      "Is this suitable for everyday use?",
-      "Are there other options/colors available?",
-      "How is the build quality?"
+      "Penghantaran cepat tak?",
+      "Tahan lama tak kalau guna harian?",
+      "Ada waranti tak barang ni?",
+      "Sesuai tak untuk guna harian?",
+      "Warna apa lagi yang ada stock?"
     ],
     follow_up_posts: [
-      "Quick follow up: A lot of people were asking about this item yesterday!",
-      "Update: Still getting great feedback on this setup."
+      "Semalam ramai tanyakan pasal item ni, stok memang makin susut!",
+      "Update ringkas: Masih ramai bagi review positif lepas guna."
     ]
   };
 }
@@ -112,9 +81,11 @@ export async function POST(req: NextRequest) {
 
     itemDetails = description || productName || "Featured Product";
     platformStr = platform || "Threads";
-    audienceStr = audience || "40-50";
+    audienceStr = audience || "General";
 
-    const prompt = `You are a top-performing affiliate marketer and social media copywriter. Write in a natural, human, scroll-native voice.
+    const prompt = `You are a top-performing affiliate marketer and social media copywriter in Malaysia. Write in a natural, human, scroll-native voice.
+
+LANGUAGE REQUIREMENT: Write ALL generated content strictly in fluent, natural Bahasa Melayu (Malay) as used on Malaysian social media (Casual/Santai Malay).
 
 PRODUCT DETAILS: ${itemDetails}
 ${url ? `LINK: ${url}` : ""}
