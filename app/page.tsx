@@ -371,4 +371,9 @@ function EditableBox({
       </div>
     </div>
   );
+}      <div className="mt-3 flex justify-end">
+        <CopyButton text={text} />
+      </div>
+    </div>
+  );
 }
