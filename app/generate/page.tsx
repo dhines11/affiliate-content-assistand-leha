@@ -1,379 +1,297 @@
-"use client";
+import { NextRequest, NextResponse } from "next/server";
 
-import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+export const maxDuration = 15;
 
-type Output = {
-  hooks: string[];
-  main_post: string[] | string;
-  ctas: string[];
-  comment_ideas: string[];
-  follow_up_posts: string[];
-  _source?: "ai" | "fallback";
-  _thin_input?: boolean;
-};
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-const PLATFORMS = ["Threads", "Facebook", "TikTok", "Instagram"];
-const GOALS = ["Get clicks", "Generate leads", "Make sales", "Build engagement"];
-const STYLES = ["Casual", "Storytelling", "Educational", "Curiosity", "Problem → Solution"];
+const MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-1.5-flash"
+];
 
-export default function GeneratePage() {
-  const [form, setForm] = useState({
-    productName: "",
-    description: "",
-    url: "",
-    audience: "",
-    platform: PLATFORMS[0],
-    goal: GOALS[0],
-    style: STYLES[0],
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [output, setOutput] = useState<Output | null>(null);
-  // Changes on every successful generation so the editable post boxes reset.
-  const [runId, setRunId] = useState(0);
-  // Remembers what was already generated for the current product, so the next
-  // generation is told to avoid repeating those ideas.
-  const usedRef = useRef<{ product: string; items: string[] }>({
-    product: "",
-    items: [],
-  });
+const HOOK_STYLES = [
+  "a blunt personal confession",
+  "a 2-line mini backstory",
+  "a bold/controversial opinion",
+  "a direct question to the reader",
+  "a specific number or stat",
+  "a relatable everyday complaint",
+  "a myth you used to believe",
+  "a quick comparison to a worse alternative",
+  "a sarcastic one-liner",
+  "a 'nobody tells you this' reveal",
+];
 
-  function update<K extends keyof typeof form>(key: K, value: string) {
-    setForm((f) => ({ ...f, [key]: value }));
+const POST_ANGLES = [
+  "a personal story of using it",
+  "myth-busting a common misconception",
+  "a quick listicle format",
+  "a 'here's what nobody tells you' reveal",
+  "a before/after comparison",
+  "responding to a common objection/doubt",
+  "a day-in-the-life scenario where it fits in",
+  "a rough cost/value breakdown",
+];
+
+const CTA_STYLES = [
+  "urgency/scarcity framing (limited stock, promo ending)",
+  "a low-pressure soft nudge (no rush, just take a look)",
+  "a curiosity-driven tease (you'll want to see this)",
+  "a social-proof nudge (mention others already checking it out)",
+  "a direct, confident command (just go grab it)",
+  "a question that leads into clicking the link",
+];
+
+const COMMENT_STYLES = [
+  "a price/promo question",
+  "a compatibility or fit-for-use-case question",
+  "a skeptical challenge/doubt",
+  "a comparison to another product/brand",
+  "a logistics question (delivery, warranty, stock)",
+  "a genuine curiosity follow-up",
+];
+
+const FOLLOWUP_STYLES = [
+  "a quick update sharing new feedback/testimonial",
+  "an urgency reminder about the promo/stock",
+  "directly answering a common question that came up",
+  "a restock or new-batch announcement",
+  "a short personal check-in on how it's going",
+];
+
+const TONE_FLAVORS = [
+  "slightly sarcastic and dry",
+  "warm and reassuring like a trusted friend",
+  "hyped but still down-to-earth",
+  "matter-of-fact, like a no-nonsense expert",
+  "a bit cheeky and playful",
+  "calm and confident, understated",
+];
+
+function pickRandom<T>(arr: T[], count: number): T[] {
+  const shuffled = [...arr].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
+
+async function fetchLinkPreview(url: string): Promise<string> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; facebookexternalhit/1.1; +http://www.facebook.com/externalhit_uatext.php)",
+      },
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return "";
+
+    const html = await res.text();
+
+    const getMeta = (prop: string) => {
+      const regex = new RegExp(
+        `<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`,
+        "i"
+      );
+      const match = html.match(regex);
+      return match ? match[1] : "";
+    };
+
+    const ogTitle = getMeta("og:title");
+    const ogDesc = getMeta("og:description");
+    const metaDesc = getMeta("description");
+    const titleTagMatch = html.match(/<title>([^<]*)<\/title>/i);
+    const titleTag = titleTagMatch ? titleTagMatch[1] : "";
+
+    const parts = [ogTitle || titleTag, ogDesc || metaDesc].filter(Boolean);
+    return parts.join(". ").slice(0, 500);
+  } catch (err) {
+    console.error("Link fetch failed:", err);
+    return "";
+  }
+}
+
+async function callGemini(prompt: string, modelIndex = 0): Promise<Response> {
+  const model = MODELS[modelIndex] || "gemini-1.5-flash";
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          maxOutputTokens: 2500,
+          temperature: 1.2,
+          topP: 0.97,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok && modelIndex < MODELS.length - 1) {
+    return callGemini(prompt, modelIndex + 1);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.productName || !form.description || !form.audience) {
-      setError("Product name, description, and target audience are required.");
-      return;
-    }
-    setError(null);
-    setLoading(true);
-    setOutput(null);
+  return response;
+}
 
-    const productKey = form.productName.trim().toLowerCase();
-    if (usedRef.current.product !== productKey) {
-      usedRef.current = { product: productKey, items: [] };
-    }
-    const avoid = usedRef.current.items.slice(-30);
+function generateFallback(cleanTitle: string, audience: string) {
+  return {
+    hooks: [
+      "Kadang-kadang jimat masa tu jauh lagi berharga daripada jimat beberapa ringgit...",
+      "Kalau korang tengah fikir nak kemas rumah tanpa buang tenaga lepas balik kerja, baca ni kejap.",
+      "Solusi praktikal untuk sesiapa yang nak rumah sentiasa bersih tanpa pening kepala.",
+      "Bukan pasal beli barang mahal, tapi pasal beli barang yang betul-betul mudahkan hidup.",
+      "Ramai tak perasan berapa banyak masa hilang setiap minggu cuma sebab urusan kemas rumah."
+    ],
+    main_post: [
+      `Realitinya, lepas balik kerja yang penat, benda terakhir kita nak buat mesti menyapu dengan mengemut lantai. ${cleanTitle} ni direka khas untuk selesaikan masalah tu secara automatik.\n\nBukan sekadar gadget biasa, tapi pelaburan kecil untuk jimatkan masa & tenaga korang setiap hari. Sesuai sangat untuk ${audience} yang hargai kebersihan tanpa pening kepala.\n\nKorang boleh check info lanjut dan harga terkini kat link bawah ni 👇`,
+      `Bila kira balik, nilai masa yang kita jimat setiap minggu guna ${cleanTitle} ni memang sangat berbaloi. Relevan sangat untuk ${audience} yang jadual harian sentiasa padat.\n\nFunction utama dia memang fokus pada kemudahan—tak payah cuci tangan, sedutan efisien, dan urusan rumah terus settle dalam diam.\n\nTengok tawaran terkini dan voucher khas kat sini 👇`,
+      `Ulasan jujur dari sudut praktikal untuk ${cleanTitle}:\n\n1. Penjimatan Masa: Automatikkan kerja rumah harian korang.\n2. Prestasi: Kebersihan konsisten tanpa perlu kawalan manual berterusan.\n3. Nilai Pelaburan: Berbaloi untuk jangka masa panjang khasnya buat ${audience}.\n\nBoleh tengok spesifikasi penuh dan harga promo kat link bio/bawah ni!`,
+      `Kalau korang tengah cari jalan smart untuk kekalkan kebersihan rumah tanpa kompromi masa lapang, ${cleanTitle} ni antara pilihan paling praktikal dalam pasaran sekarang.\n\nKualiti solid, fungsi tepat pada sasaran, dan sesuai untuk gaya hidup ${audience}.\n\nKlik link bawah ni untuk tengok tawaran rasmi sekarang.`
+    ],
+    ctas: [
+      "Semak maklumat lanjut dan voucher promosi di sini 👇",
+      "Tekan link untuk tengok harga terkini dan promosi rasmi.",
+      "Klik link di bawah untuk semak ketersediaan stok rasmi."
+    ],
+    comment_ideas: [
+      "Berapa lama jaminan (warranty) rasmi untuk model ni?",
+      "Sesuai tak kalau guna kat ruang yang ada karpet tebal?",
+      "Berapa hari biasa mengambil masa untuk penghantaran?",
+      "Kapasiti bateri dia tahan berapa lama untuk sekali cas?",
+      "Ada beza ketara tak dengan model generasi sebelum ni?"
+    ],
+    follow_up_posts: [
+      "Update ringkas: Maklum balas dari pembeli sebelum ni memang banyak tekankan bab jimat masa.",
+      "Untuk yang bertanyakan pasal promosi, korang masih boleh semak voucher terkini di link rasmi."
+    ]
+  };
+}
 
-    try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, avoid }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Something went wrong generating content.");
+export async function POST(req: NextRequest) {
+  let cleanTitle = "Product";
+  let audienceStr = "General";
+
+  try {
+    const body = await req.json();
+    const { productName, description, url, audience, platform, goal, style } = body;
+
+    const platformStr = platform || "Threads";
+    audienceStr = audience || "General";
+
+    let linkInfo = "";
+    if (url) {
+      linkInfo = await fetchLinkPreview(url);
+    }
+
+    const userDescription = description || "";
+    const combinedDetails = [userDescription, linkInfo].filter(Boolean).join(". ");
+    const itemDetails = combinedDetails || productName || "Featured Product";
+
+    cleanTitle = (productName || itemDetails.split(" ").slice(0, 3).join(" ")).trim();
+
+    const hasRealDetail = combinedDetails.length > 15;
+
+    // Randomize instructions every single call so repeat generations differ too
+    const chosenHookStyles = pickRandom(HOOK_STYLES, 5);
+    const chosenAngles = pickRandom(POST_ANGLES, 4);
+    const chosenCtaStyles = pickRandom(CTA_STYLES, 3);
+    const chosenCommentStyles = pickRandom(COMMENT_STYLES, 5);
+    const chosenFollowupStyles = pickRandom(FOLLOWUP_STYLES, 2);
+    const chosenTone = pickRandom(TONE_FLAVORS, 1)[0];
+    const varietyToken = Math.random().toString(36).slice(2, 10);
+
+    const prompt = `You are a Malaysian affiliate marketer with 100k+ followers on Threads and TikTok. You are NOT a corporate copywriter — you write like a real person who actually uses the product and is texting a friend about it.
+
+PRODUCT NAME: ${cleanTitle}
+KNOWN PRODUCT INFO: ${itemDetails}
+${hasRealDetail ? "" : "NOTE: Very little real detail is available about this product beyond its name/category. Do NOT invent fake specs, numbers, or claims. Lean on a common, realistic pain point or use case for this TYPE of product instead, and stay grounded rather than generic hype."}
+LINK: ${url || "N/A"}
+AUDIENCE: ${audienceStr}
+PLATFORM: ${platformStr}
+GOAL: ${goal || "Get clicks"}
+STYLE: ${style || "Casual"}
+OVERALL TONE FOR THIS GENERATION: ${chosenTone}
+
+VARIETY TOKEN (ignore the value itself — it just means: write completely fresh wording everywhere below, do not reuse phrasing, structure, or specific sentences from any previous generation, even for the same product): ${varietyToken}
+
+HOOKS — write hook 1 through 5 using EXACTLY these styles, in this order:
+1. ${chosenHookStyles[0]}
+2. ${chosenHookStyles[1]}
+3. ${chosenHookStyles[2]}
+4. ${chosenHookStyles[3]}
+5. ${chosenHookStyles[4]}
+
+MAIN POSTS — write the 4 main_post variations using EXACTLY these angles, in this order:
+1. ${chosenAngles[0]}
+2. ${chosenAngles[1]}
+3. ${chosenAngles[2]}
+4. ${chosenAngles[3]}
+
+CTAS — write the 3 ctas using EXACTLY these styles, in this order:
+1. ${chosenCtaStyles[0]}
+2. ${chosenCtaStyles[1]}
+3. ${chosenCtaStyles[2]}
+
+COMMENT IDEAS — write the 5 comment_ideas using EXACTLY these styles, in this order:
+1. ${chosenCommentStyles[0]}
+2. ${chosenCommentStyles[1]}
+3. ${chosenCommentStyles[2]}
+4. ${chosenCommentStyles[3]}
+5. ${chosenCommentStyles[4]}
+
+FOLLOW-UP POSTS — write the 2 follow_up_posts using EXACTLY these styles, in this order:
+1. ${chosenFollowupStyles[0]}
+2. ${chosenFollowupStyles[1]}
+
+VOICE RULES — THIS IS CRITICAL:
+- Write in casual Bahasa Melayu the way people actually type on Threads/TikTok: mix in words like "korang", "confirm", "real talk", "gila", "trust me", "worth it doh", "kalau ikutkan", "jujur cakap", "the thing is". A few natural English words mixed in (Manglish/rojak style) is expected and good.
+- Ground every hook, post, CTA, comment, and follow-up in something from KNOWN PRODUCT INFO — a real feature, category-typical use case, or specific pain point. Never write something that could apply to literally any product with zero changes.
+- BANNED — never use these or close variants: "jimat masa", "jimat tenaga", "pelaburan kecil", "gaya hidup", "kualiti solid", "sesuai untuk", "korang boleh check", "tanpa pening kepala", "berbaloi", "praktikal", "automatikkan", "Semak maklumat lanjut dan voucher promosi di sini", "Jujur cakap, aku ingat [product] ni gimik je", "POV: kau dah penat scroll review palsu".
+- No emoji spam. Max 1 emoji per post, only if it adds something.
+- Include one small honest nitpick or imperfection somewhere (builds trust) — not pure hype.
+
+Return ONLY valid JSON matching this schema, no markdown fences:
+{
+  "hooks": ["Hook 1", "Hook 2", "Hook 3", "Hook 4", "Hook 5"],
+  "main_post": [
+    "Main Post Option 1",
+    "Main Post Option 2",
+    "Main Post Option 3",
+    "Main Post Option 4"
+  ],
+  "ctas": ["CTA 1", "CTA 2", "CTA 3"],
+  "comment_ideas": ["Comment 1", "Comment 2", "Comment 3", "Comment 4", "Comment 5"],
+  "follow_up_posts": ["Follow up 1", "Follow up 2"]
+}`;
+
+    if (GEMINI_API_KEY) {
+      const response = await callGemini(prompt);
+      if (response.ok) {
+        const data = await response.json();
+        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        const cleaned = rawText.replace(/```json|```/g, "").trim();
+        try {
+          const parsed = JSON.parse(cleaned);
+          return NextResponse.json(parsed);
+        } catch {
+          console.error("JSON parse failed. Raw text:", rawText);
+          return NextResponse.json(generateFallback(cleanTitle, audienceStr));
+        }
       }
-      const data: Output = await res.json();
-      if (data._source !== "fallback") {
-        const posts = Array.isArray(data.main_post) ? data.main_post : [data.main_post];
-        const used = [...data.hooks, ...posts, ...data.follow_up_posts].map((s) =>
-          s.slice(0, 120)
-        );
-        usedRef.current.items = [...usedRef.current.items, ...used].slice(-40);
-      }
-      setOutput(data);
-      setRunId((n) => n + 1);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
     }
+
+    return NextResponse.json(generateFallback(cleanTitle, audienceStr));
+  } catch (error) {
+    console.error("API error:", error);
+    return NextResponse.json(generateFallback(cleanTitle, audienceStr));
   }
-
-  return (
-    <main className="mx-auto min-h-screen max-w-2xl px-5 py-10">
-      <Link href="/" className="text-sm text-white/50 hover:text-white/80">
-        ← Back
-      </Link>
-      <h1 className="mt-4 text-2xl font-bold sm:text-3xl">
-        Build your affiliate content
-      </h1>
-      <p className="mt-1 text-sm text-white/50">
-        Fill in the details below. The more specific, the better the output.
-      </p>
-
-      <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-        <Field label="Product name *">
-          <input
-            className={inputClass}
-            value={form.productName}
-            onChange={(e) => update("productName", e.target.value)}
-            placeholder="e.g. Glow Vitamin C Serum"
-          />
-        </Field>
-
-        <Field label="Product description *">
-          <textarea
-            className={inputClass + " min-h-[100px]"}
-            value={form.description}
-            onChange={(e) => update("description", e.target.value)}
-            placeholder="What is it, what problem does it solve, key features/benefits, price..."
-          />
-        </Field>
-
-        <Field label="Product / affiliate link (optional)">
-          <input
-            className={inputClass}
-            value={form.url}
-            onChange={(e) => update("url", e.target.value)}
-            placeholder="https://..."
-          />
-        </Field>
-
-        <Field label="Target audience *">
-          <input
-            className={inputClass}
-            value={form.audience}
-            onChange={(e) => update("audience", e.target.value)}
-            placeholder="e.g. women 20-35 into skincare"
-          />
-        </Field>
-
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-          <Field label="Platform">
-            <Select
-              value={form.platform}
-              onChange={(v) => update("platform", v)}
-              options={PLATFORMS}
-            />
-          </Field>
-          <Field label="Goal">
-            <Select
-              value={form.goal}
-              onChange={(v) => update("goal", v)}
-              options={GOALS}
-            />
-          </Field>
-          <Field label="Content style">
-            <Select
-              value={form.style}
-              onChange={(v) => update("style", v)}
-              options={STYLES}
-            />
-          </Field>
-        </div>
-
-        {error && (
-          <p className="rounded-xl bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            {error}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-full bg-brand py-4 font-semibold text-white transition hover:bg-brand-light disabled:opacity-50"
-        >
-          {loading ? "Generating…" : "Generate Content"}
-        </button>
-      </form>
-
-      {output && (
-        <OutputView key={runId} output={output} platform={form.platform} />
-      )}
-    </main>
-  );
-}
-
-const inputClass =
-  "w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-brand-light";
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-white/70">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Select({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-}) {
-  return (
-    <select
-      className={inputClass}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {options.map((o) => (
-        <option key={o} value={o} className="bg-[#0b0b12]">
-          {o}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function OutputView({ output, platform }: { output: Output; platform: string }) {
-  // The API returns the main posts as an array. Handle a single string too.
-  const posts = Array.isArray(output.main_post)
-    ? output.main_post
-    : [output.main_post];
-  const postLimit = platform === "Threads" ? 500 : null;
-
-  return (
-    <div className="mt-10 space-y-8">
-      {output._source === "fallback" && (
-        <p className="rounded-xl bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          The AI was busy, so this is generic backup content. Tap Generate
-          Content again for fresh, product-specific results.
-        </p>
-      )}
-      {output._source !== "fallback" && output._thin_input && (
-        <p className="rounded-xl bg-white/5 px-4 py-3 text-sm text-white/60">
-          Tip: add more product details (features, price, problems it solves)
-          for sharper results.
-        </p>
-      )}
-
-      <Section title={`${output.hooks.length} Hooks`} label="Hook" items={output.hooks} />
-      <Section
-        title={`Main Post (${posts.length} options)`}
-        label="Option"
-        items={posts}
-        limit={postLimit}
-        rows={7}
-      />
-      <Section
-        title={`CTA Options (${output.ctas.length})`}
-        label="CTA"
-        items={output.ctas}
-      />
-      <Section
-        title={`Comment / Reply Ideas (${output.comment_ideas.length})`}
-        label="Comment"
-        items={output.comment_ideas}
-        rows={4}
-      />
-      <Section
-        title={`Follow-up Posts (${output.follow_up_posts.length})`}
-        label="Follow-up"
-        items={output.follow_up_posts}
-        limit={postLimit}
-        rows={5}
-      />
-      <p className="text-xs text-white/40">
-        Every box is editable. Change the text, then tap Copy.
-      </p>
-    </div>
-  );
-}
-
-function Section({
-  title,
-  label,
-  items,
-  limit = null,
-  rows = 3,
-}: {
-  title: string;
-  label: string;
-  items: string[];
-  limit?: number | null;
-  rows?: number;
-}) {
-  return (
-    <div>
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-white/50">
-        {title}
-      </h2>
-      <div className="space-y-3">
-        {items.map((text, i) => (
-          <EditableBox
-            key={i}
-            label={`${label} ${i + 1}`}
-            initial={text}
-            limit={limit}
-            rows={rows}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard blocked by the browser; nothing else to do
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      className="rounded-full border border-white/15 px-3 py-1 text-xs font-medium text-white/70 transition hover:border-white/30 hover:text-white"
-    >
-      {copied ? "Copied ✓" : "Copy"}
-    </button>
-  );
-}
-
-function EditableBox({
-  label,
-  initial,
-  limit,
-  rows,
-}: {
-  label: string;
-  initial: string;
-  limit: number | null;
-  rows: number;
-}) {
-  const [text, setText] = useState(initial);
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const over = limit !== null && text.length > limit;
-
-  // Grow the box to fit its text so nothing is cut off.
-  useEffect(() => {
-    const el = ref.current;
-    if (el) {
-      el.style.height = "auto";
-      el.style.height = `${el.scrollHeight}px`;
-    }
-  }, [text]);
-
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-brand-light">
-          {label}
-        </span>
-        <span className={`text-xs ${over ? "text-red-300" : "text-white/40"}`}>
-          {text.length}
-          {limit ? ` / ${limit}` : ""}
-        </span>
-      </div>
-      <textarea
-        ref={ref}
-        rows={rows}
-        className={inputClass + " resize-none overflow-hidden leading-relaxed"}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
-      <div className="mt-3 flex justify-end">
-        <CopyButton text={text} />
-      </div>
-    </div>
-  );
 }
