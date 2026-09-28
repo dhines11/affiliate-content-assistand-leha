@@ -1,4 +1,7 @@
 # AI Affiliate Content Assistant — MVP
+## Summary
+This project is an AI-powered assistant designed to help create affiliate content quickly and efficiently.
+
 
 ## Get a free API key
 Go to https://aistudio.google.com/app/apikey → sign in with Google → Create API Key.
